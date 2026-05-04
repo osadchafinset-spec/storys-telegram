@@ -1,22 +1,9 @@
-# =====================================
-# RESET
-# =====================================
-
-if text == "🔄 Почати спочатку":
-    context.user_data.clear()
-
-    await update.message.reply_text(
-        "Все скинуто. Напиши нову тему сторіс"
-    )
-    return
 from telegram import Update
 from telegram.ext import ContextTypes
 
 from imagine import build_slide, analyze_reference
 from keyboard import main_keyboard
-
-# тут у тебе вже є твоя функція Claude (cloud.py)
-from cloud import generate_story  # припускаю назву
+from cloud import generate_story  # твоя функція Claude
 
 
 # =========================================
@@ -24,7 +11,11 @@ from cloud import generate_story  # припускаю назву
 # =========================================
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Напиши тему сторіс")
+    context.user_data.clear()
+    await update.message.reply_text(
+        "Напиши тему сторіс",
+        reply_markup=main_keyboard()
+    )
 
 
 # =========================================
@@ -36,7 +27,19 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_data = context.user_data
 
     # =====================================
-    # КНОПКА "ГЕНЕРУЙ"
+    # RESET
+    # =====================================
+
+    if text == "🔄 Почати спочатку":
+        user_data.clear()
+        await update.message.reply_text(
+            "Все скинуто. Напиши нову тему",
+            reply_markup=main_keyboard()
+        )
+        return
+
+    # =====================================
+    # ГЕНЕРАЦІЯ КАРТИНКИ
     # =====================================
 
     if text == "🎨 Генеруй":
@@ -61,7 +64,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     # =====================================
-    # КНОПКА "РЕДАГУВАТИ"
+    # РЕДАГУВАННЯ
     # =====================================
 
     if text == "✏️ Редагувати":
@@ -69,12 +72,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Напиши новий текст")
         return
 
-    # =====================================
-    # РЕДАГУВАННЯ ТЕКСТУ
-    # =====================================
-
     if user_data.get("editing"):
-
         user_data["slide_text"] = text
         user_data["editing"] = False
 
@@ -90,34 +88,48 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text("Генерую текст...")
 
-    result = await generate_story(text)
+    try:
+        result = await generate_story(text)
 
-    # тут адаптуй під свій формат
-    slide_text = result["text"]
-    what_to_show = result["what_to_show"]
+        # ⚠️ адаптуй під свій формат якщо треба
+        slide_text = result.get("text")
+        what_to_show = result.get("what_to_show")
 
-    user_data["slide_text"] = slide_text
-    user_data["what_to_show"] = what_to_show
-    user_data["style"] = None
+        if not slide_text:
+            await update.message.reply_text("Claude не дав текст")
+            return
 
-    await update.message.reply_text(
-        f"{slide_text}\n\nЩо показати:\n{what_to_show}",
-        reply_markup=main_keyboard()
-    )
+        user_data["slide_text"] = slide_text
+        user_data["what_to_show"] = what_to_show
+        user_data["style"] = None
+
+        await update.message.reply_text(
+            f"{slide_text}\n\nЩо показати:\n{what_to_show}",
+            reply_markup=main_keyboard()
+        )
+
+    except Exception as e:
+        await update.message.reply_text(f"Помилка генерації тексту: {e}")
 
 
 # =========================================
-# ОБРОБКА ФОТО (РЕФЕРЕНС)
+# ОБРОБКА ФОТО (СТИЛЬ)
 # =========================================
 
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        photo = update.message.photo[-1]
+        file = await photo.get_file()
+        image_bytes = await file.download_as_bytearray()
 
-    photo = update.message.photo[-1]
-    file = await photo.get_file()
-    image_bytes = await file.download_as_bytearray()
+        style = await analyze_reference(image_bytes)
 
-    style = await analyze_reference(image_bytes)
+        context.user_data["style"] = style
 
-    context.user_data["style"] = style
+        await update.message.reply_text(
+            "Стиль збережено. Тепер натисни 🎨 Генеруй",
+            reply_markup=main_keyboard()
+        )
 
-    await update.message.reply_text("Стиль збережено. Тепер натисни 'Генеруй'.")
+    except Exception as e:
+        await update.message.reply_text(f"Помилка обробки фото: {e}")
