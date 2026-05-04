@@ -1,32 +1,15 @@
-import logging
+import os
 
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+CLAUDE_API_KEY = os.getenv("ANTHROPIC_API_KEY")  # ← твоя назва в Railway
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
-from config import TELEGRAM_TOKEN
-from handlers import start, reset, handle_message, handle_photo
+MODEL_NAME   = "claude-haiku-4-5-20251001"
 
-# =========================================
-# ЛОГИ
-# =========================================
-
-logging.basicConfig(level=logging.INFO)
-logging.getLogger("httpx").setLevel(logging.WARNING)
-
-# =========================================
-# ЗАПУСК
-# =========================================
-
-def main() -> None:
-    app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
-
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("reset", reset))
-    app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-
-    print("✅ Бот запущений")
-    app.run_polling()
-
-
-if __name__ == "__main__":
-    main()
+GOALS        = ["Продаж", "Залучення", "Прогрів", "Кейс", "Відгук", "Історія"]
+TONES        = ["Жорстко", "Тепло", "Експертно", "Дружньо", "Провокаційно", "Продаюче"]
+STORY_COUNTS = ["3", "5", "7", "10"]
+MODES        = ["Тема", "Моя історія"]
+LANGUAGES    = ["Українська", "Русский", "English"]
+RESET_BTN    = "🔄 Почати заново"
+STYLES       = ["Мінімалізм", "Темний преміум", "Яскравий поп", "Пастельний", "Фото"]
