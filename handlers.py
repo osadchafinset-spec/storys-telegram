@@ -1,3 +1,14 @@
+# =====================================
+# RESET
+# =====================================
+
+if text == "🔄 Почати спочатку":
+    context.user_data.clear()
+
+    await update.message.reply_text(
+        "Все скинуто. Напиши нову тему сторіс"
+    )
+    return
 from telegram import Update
 from telegram.ext import ContextTypes
 
