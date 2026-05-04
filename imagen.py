@@ -64,11 +64,25 @@ async def generate_background(scene, style, reference_style_desc):
 
     style_desc = reference_style_desc if reference_style_desc else STYLES.get(style, STYLES[DEFAULT_STYLE])
 
-    prompt = (
-        f"Instagram Story background, vertical 9:16. "
-        f"{scene}. {style_desc}. "
-        f"No text. Clean composition. High quality."
-    )
+   prompt = (
+    f"Instagram Story image, vertical 9:16.\n"
+
+    f"REALISTIC SCENE:\n{scene}\n\n"
+
+    "IMPORTANT:\n"
+    "- This is NOT abstract background\n"
+    "- Show real objects, real situation\n"
+    "- No gradients, no empty backgrounds\n"
+    "- No minimalism\n\n"
+
+    "COMPOSITION:\n"
+    "- Clear subject in frame\n"
+    "- Instagram style content\n"
+    "- Looks like real photo or video frame\n\n"
+
+    f"STYLE: {style_desc}\n"
+    "High detail, professional, realistic"
+)
 
     try:
         response = _client.models.generate_content(
