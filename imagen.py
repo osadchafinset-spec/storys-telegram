@@ -43,7 +43,7 @@ async def analyze_reference(image_bytes: bytes) -> str | None:
     try:
         image_b64 = base64.b64encode(image_bytes).decode("utf-8")
         response = _client.models.generate_content(
-            model="gemini-2.0-flash-001",
+            model="gemini-2.0-flash-preview-image-generation",
             contents=[{
                 "parts": [
                     {"inline_data": {"mime_type": "image/jpeg", "data": image_b64}},
