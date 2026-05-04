@@ -1,8 +1,9 @@
 from telegram import Update
 from telegram.ext import ContextTypes
 
+
 from imagen import build_slide, analyze_reference
-from keyboard import main_keyboard
+from keyboards import main_keyboard
 from cloud import generate_story  # твоя функція Claude
 
 
