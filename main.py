@@ -3,7 +3,7 @@ import logging
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters
 
 from config import TELEGRAM_TOKEN
-from handlers import start, reset, handle_message, handle_photo
+from handlers import start, handle_message, handle_photo
 
 logging.basicConfig(level=logging.INFO)
 logging.getLogger("httpx").setLevel(logging.WARNING)
