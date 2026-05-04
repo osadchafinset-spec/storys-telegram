@@ -19,11 +19,11 @@ CANVAS_W = 1080
 CANVAS_H = 1920
 
 STYLES = {
-    "Мінімалізм":     "minimalist clean background, white and neutral tones, soft light, lots of negative space",
-    "Темний преміум":  "dark premium background, deep blacks and golds, cinematic moody lighting, luxury aesthetic",
-    "Яскравий поп":   "vibrant colorful background, bold saturated colors, energetic, trendy Gen-Z aesthetic",
-    "Пастельний":     "soft pastel background, dreamy light colors, gentle gradients, aesthetic cozy mood",
-    "Фото":           "photorealistic scene, cinematic lighting, professional photography style",
+    "Мінімалізм":    "minimalist clean background, white and neutral tones, soft light, lots of negative space",
+    "Темний преміум": "dark premium background, deep blacks and golds, cinematic moody lighting, luxury aesthetic",
+    "Яскравий поп":  "vibrant colorful background, bold saturated colors, energetic, trendy Gen-Z aesthetic",
+    "Пастельний":    "soft pastel background, dreamy light colors, gentle gradients, aesthetic cozy mood",
+    "Фото":          "photorealistic scene, cinematic lighting, professional photography style",
 }
 
 DEFAULT_STYLE = "Мінімалізм"
@@ -40,47 +40,32 @@ _client = genai.Client(api_key=GEMINI_API_KEY)
 # =========================================
 
 async def analyze_reference(image_bytes: bytes) -> str | None:
-    """
-    Аналізує референс-зображення через Gemini Vision.
-    Повертає текстовий опис стилю для використання в промпті Imagen 3.
-    """
     try:
         image_b64 = base64.b64encode(image_bytes).decode("utf-8")
-
         response = _client.models.generate_content(
             model="gemini-2.0-flash-001",
-            contents=[
-                {
-                    "parts": [
-                        {
-                            "inline_data": {
-                                "mime_type": "image/jpeg",
-                                "data": image_b64,
-                            }
-                        },
-                        {
-                            "text": (
-                                "Analyze this image's visual style for use as a reference "
-                                "for generating Instagram Story backgrounds. "
-                                "Describe ONLY: color palette, lighting mood, textures, atmosphere, artistic style. "
-                                "Do NOT mention people, faces, or specific objects. "
-                                "Give a concise 2-3 sentence description in English "
-                                "suitable for an image generation prompt."
-                            )
-                        },
-                    ]
-                }
-            ],
+            contents=[{
+                "parts": [
+                    {"inline_data": {"mime_type": "image/jpeg", "data": image_b64}},
+                    {"text": (
+                        "Analyze this image's visual style for use as a reference "
+                        "for generating Instagram Story backgrounds. "
+                        "Describe ONLY: color palette, lighting mood, textures, atmosphere, artistic style. "
+                        "Do NOT mention people, faces, or specific objects. "
+                        "Give a concise 2-3 sentence description in English "
+                        "suitable for an image generation prompt."
+                    )}
+                ]
+            }],
         )
         return response.text.strip()
-
     except Exception as e:
         logger.error("Gemini Vision reference analysis error: %s", e)
         return None
 
 
 # =========================================
-# ГЕНЕРАЦІЯ ФОНУ (Imagen 3)
+# ГЕНЕРАЦІЯ ФОНУ (Gemini 2.0 Flash)
 # =========================================
 
 async def generate_background(
@@ -89,34 +74,40 @@ async def generate_background(
     reference_style_desc: str | None = None,
 ) -> Image.Image | None:
     """
-    Генерує фонове зображення через Imagen 3.
-    Якщо є reference_style_desc — використовує його замість стандартного стилю.
+    Генерує фонове зображення через Gemini 2.0 Flash image generation.
     Повертає PIL Image або None у разі помилки.
     """
     style_desc = reference_style_desc if reference_style_desc else STYLES.get(style, STYLES[DEFAULT_STYLE])
 
     prompt = (
-        f"Instagram Story background, vertical 9:16 format, 1080x1920. "
+        f"Instagram Story background image, vertical 9:16 format. "
         f"Scene: {scene}. "
         f"Style: {style_desc}. "
-        f"No text, no people faces, no UI elements. "
-        f"Leave empty space in the bottom third of the image."
+        f"No text overlay, no UI elements, no watermarks. "
+        f"Leave the bottom third of the image clean and uncluttered. "
+        f"High quality, professional social media visual."
     )
 
     try:
-        response = _client.models.generate_images(
-            model="imagen-3.0-generate-001",
-            prompt=prompt,
-            config=types.GenerateImagesConfig(
-                number_of_images=1,
-                aspect_ratio="9:16",
+        response = _client.models.generate_content(
+            model="gemini-2.0-flash-preview-image-generation",
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                response_modalities=["image"],
             ),
         )
-        image_bytes = response.generated_images[0].image.image_bytes
-        return Image.open(io.BytesIO(image_bytes)).resize((CANVAS_W, CANVAS_H))
+
+        for part in response.candidates[0].content.parts:
+            if part.inline_data is not None:
+                image_bytes = part.inline_data.data
+                img = Image.open(io.BytesIO(image_bytes))
+                return img.resize((CANVAS_W, CANVAS_H))
+
+        logger.error("Gemini returned no image parts")
+        return None
 
     except Exception as e:
-        logger.error("Imagen 3 error: %s", e)
+        logger.error("Gemini image generation error: %s", e)
         return None
 
 
@@ -137,7 +128,6 @@ def _get_font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
 
 
 def _wrap_text(text: str, font, max_width: int, draw: ImageDraw.ImageDraw) -> list[str]:
-    """Розбиває текст на рядки щоб влізти в max_width."""
     words = text.split()
     lines, current = [], ""
     for word in words:
@@ -159,10 +149,6 @@ def overlay_text(
     slide_text: str,
     has_interactive: bool = False,
 ) -> Image.Image:
-    """
-    Накладає текст на зображення.
-    Якщо has_interactive=True — залишає нижню зону і позначає її.
-    """
     img  = image.copy().convert("RGBA")
     draw = ImageDraw.Draw(img)
 
@@ -192,7 +178,7 @@ def overlay_text(
     for line in lines:
         bbox = draw.textbbox((0, 0), line, font=font)
         x    = (CANVAS_W - (bbox[2] - bbox[0])) // 2
-        draw.text((x + 3, y + 3), line, font=font, fill=(0, 0, 0, 180))   # тінь
+        draw.text((x + 3, y + 3), line, font=font, fill=(0, 0, 0, 180))
         draw.text((x,     y    ), line, font=font, fill=(255, 255, 255, 255))
         y += line_height
 
@@ -236,10 +222,6 @@ async def build_slide(
     style: str = DEFAULT_STYLE,
     reference_style_desc: str | None = None,
 ) -> bytes | None:
-    """
-    Генерує повний слайд: фон через Imagen 3 + текст через Pillow.
-    Повертає bytes готового зображення або None у разі помилки.
-    """
     bg = await generate_background(
         scene=what_to_show,
         style=style,
@@ -247,6 +229,7 @@ async def build_slide(
     )
 
     if bg is None:
+        logger.warning("Using black fallback background for slide")
         bg = Image.new("RGB", (CANVAS_W, CANVAS_H), color=(20, 20, 20))
 
     final = overlay_text(bg, slide_text, has_interactive=has_interactive)
