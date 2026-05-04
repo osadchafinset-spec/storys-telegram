@@ -4,7 +4,7 @@ from telegram.ext import ContextTypes
 
 from imagen import build_slide, analyze_reference
 from keyboards import main_keyboard
-from claude_api import generate_story  # твоя функція Claude
+from claude_api import generate_with_claude
 
 
 # =========================================
@@ -45,8 +45,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if text == "🎨 Генеруй":
 
-        slide_text = user_data.get("slide_text")
-        what_to_show = user_data.get("what_to_show")
+      slide_text = result
+what_to_show = result
         style = user_data.get("style")
 
         if not slide_text:
