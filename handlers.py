@@ -4,7 +4,7 @@ from telegram.ext import ContextTypes
 
 from imagen import build_slide, analyze_reference
 from keyboards import main_keyboard
-from cloud import generate_story  # твоя функція Claude
+from claude_api import generate_story  # твоя функція Claude
 
 
 # =========================================
