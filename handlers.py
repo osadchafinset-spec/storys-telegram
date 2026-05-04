@@ -40,22 +40,22 @@ def parse_slides(text: str) -> list[dict]:
     Повертає список: [{"text": "...", "what_to_show": "...", "has_interactive": bool}]
     """
     slides = []
-    blocks = re.split(r"Слайд\s+\d+\s*:", text)
+    blocks = re.split(r"\*{0,2}Слайд\s+\d+\*{0,2}\s*:", text)
 
     for block in blocks[1:]:
         slide_text      = ""
         what_to_show    = ""
         has_interactive = False
 
-        text_match = re.search(r"-\s*Текст:\s*(.+)", block)
+        text_match = re.search(r"\*{0,2}-?\s*\*{0,2}Текст\*{0,2}:\*{0,2}\s*(.+)", block)
         if text_match:
             slide_text = text_match.group(1).strip().strip('"').replace("(не більше 18 слів)", "").strip()
 
-        show_match = re.search(r"-\s*Що показати:\s*(.+)", block)
+        show_match = re.search(r"\*{0,2}-?\s*\*{0,2}Що показати\*{0,2}:\*{0,2}\s*(.+)", block)
         if show_match:
             what_to_show = show_match.group(1).strip()
 
-        interactive_match = re.search(r"-\s*Інтерактив:\s*(.+)", block)
+        interactive_match = re.search(r"\*{0,2}-?\s*\*{0,2}Інтерактив\*{0,2}:\*{0,2}\s*(.+)", block)
         if interactive_match:
             interactive_val = interactive_match.group(1).strip()
             has_interactive = interactive_val.lower() not in ("без інтерактиву", "немає", "-", "")
