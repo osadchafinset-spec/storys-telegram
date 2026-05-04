@@ -15,10 +15,10 @@ CANVAS_W = 1080
 CANVAS_H = 1920
 
 STYLES = {
-    "Мінімалізм": "minimalist clean background, white and neutral tones, soft light",
+    "Мінімалізм": "minimalist clean background, white tones, soft light",
     "Темний преміум": "dark premium, black and gold, cinematic lighting",
-    "Яскравий поп": "bright vibrant colors, trendy Gen Z style",
-    "Пастельний": "soft pastel colors, dreamy gradients",
+    "Яскравий поп": "bright vibrant colors, trendy social media aesthetic",
+    "Пастельний": "soft pastel colors, gentle gradients",
     "Фото": "photorealistic, cinematic lighting",
 }
 
@@ -27,11 +27,42 @@ DEFAULT_STYLE = "Мінімалізм"
 _client = genai.Client(api_key=GEMINI_API_KEY)
 
 # =========================================
-# ГЕНЕРАЦІЯ ФОНУ
+# ANALYZE REFERENCE
 # =========================================
 
-async def generate_background(scene: str, style: str = DEFAULT_STYLE) -> Image.Image | None:
-    style_desc = STYLES.get(style, STYLES[DEFAULT_STYLE])
+async def analyze_reference(image_bytes: bytes) -> str | None:
+    try:
+        image_b64 = base64.b64encode(image_bytes).decode("utf-8")
+
+        response = _client.models.generate_content(
+            model="gemini-2.0-flash",
+            contents=[
+                {
+                    "parts": [
+                        {"inline_data": {"mime_type": "image/jpeg", "data": image_b64}},
+                        {"text": "Describe visual style for Instagram Story background. Colors, light, mood."},
+                    ]
+                }
+            ],
+        )
+
+        if response and response.text:
+            return response.text.strip()
+
+        return None
+
+    except Exception as e:
+        logger.error("Reference analysis error: %s", e)
+        return None
+
+
+# =========================================
+# GENERATE BACKGROUND
+# =========================================
+
+async def generate_background(scene, style, reference_style_desc):
+
+    style_desc = reference_style_desc if reference_style_desc else STYLES.get(style, STYLES[DEFAULT_STYLE])
 
     prompt = (
         f"Instagram Story background, vertical 9:16. "
@@ -46,33 +77,29 @@ async def generate_background(scene: str, style: str = DEFAULT_STYLE) -> Image.I
         )
 
         if not response or not response.candidates:
-            logger.error("No candidates from Gemini")
             return None
 
-        parts = response.candidates[0].content.parts
-
-        for part in parts:
+        for part in response.candidates[0].content.parts:
             if hasattr(part, "inline_data") and part.inline_data:
-                img_bytes = part.inline_data.data
-                img = Image.open(io.BytesIO(img_bytes))
+                img = Image.open(io.BytesIO(part.inline_data.data))
                 return img.resize((CANVAS_W, CANVAS_H))
 
-        logger.error("No image in response")
         return None
 
     except Exception as e:
-        logger.error("Gemini image error: %s", e)
+        logger.error("Image generation error: %s", e)
         return None
 
+
 # =========================================
-# FALLBACK (НЕ ЧОРНИЙ)
+# FALLBACK
 # =========================================
 
 def generate_gradient():
     img = Image.new("RGB", (CANVAS_W, CANVAS_H))
     draw = ImageDraw.Draw(img)
 
-    c1 = tuple(random.randint(50, 150) for _ in range(3))
+    c1 = tuple(random.randint(40, 120) for _ in range(3))
     c2 = tuple(random.randint(150, 255) for _ in range(3))
 
     for y in range(CANVAS_H):
@@ -82,8 +109,9 @@ def generate_gradient():
 
     return img
 
+
 # =========================================
-# ТЕКСТ
+# TEXT
 # =========================================
 
 def _get_font(size):
@@ -95,6 +123,7 @@ def _get_font(size):
         if Path(p).exists():
             return ImageFont.truetype(p, size)
     return ImageFont.load_default()
+
 
 def wrap(text, font, max_w, draw):
     words = text.split()
@@ -110,6 +139,7 @@ def wrap(text, font, max_w, draw):
         lines.append(cur)
     return lines
 
+
 def overlay_text(img, text):
     img = img.convert("RGBA")
     draw = ImageDraw.Draw(img)
@@ -117,32 +147,54 @@ def overlay_text(img, text):
     font = _get_font(72)
     max_w = CANVAS_W - 120
 
+    text = text[:180]  # захист
+
     lines = wrap(text, font, max_w, draw)
+
     y = int(CANVAS_H * 0.6)
 
     for line in lines:
         w = draw.textlength(line, font=font)
         x = (CANVAS_W - w) // 2
 
-        draw.text((x+2, y+2), line, font=font, fill=(0,0,0,150))
+        draw.text((x+3, y+3), line, font=font, fill=(0,0,0,150))
         draw.text((x, y), line, font=font, fill=(255,255,255,255))
+
         y += 80
 
     return img.convert("RGB")
+
 
 # =========================================
 # MAIN
 # =========================================
 
-async def build_slide(slide_text, what_to_show, style=DEFAULT_STYLE):
-    bg = await generate_background(what_to_show, style)
+async def build_slide(
+    slide_text,
+    what_to_show,
+    has_interactive=False,
+    style=DEFAULT_STYLE,
+    reference_style_desc=None,
+):
+    bg = None
+
+    # 🔥 RETRY
+    for _ in range(3):
+        bg = await generate_background(
+            scene=what_to_show,
+            style=style,
+            reference_style_desc=reference_style_desc,
+        )
+        if bg:
+            break
 
     if bg is None:
-        logger.warning("Fallback gradient used")
+        logger.warning("Fallback used")
         bg = generate_gradient()
 
     final = overlay_text(bg, slide_text)
 
     buf = io.BytesIO()
     final.save(buf, format="JPEG", quality=90)
+
     return buf.getvalue()
