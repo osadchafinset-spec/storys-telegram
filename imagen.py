@@ -14,20 +14,11 @@ logger = logging.getLogger(__name__)
 CANVAS_W = 1080
 CANVAS_H = 1920
 
-STYLES = {
-    "Мінімалізм": "minimalist clean background, white tones, soft light",
-    "Темний преміум": "dark premium, black and gold, cinematic lighting",
-    "Яскравий поп": "bright vibrant colors, trendy social media aesthetic",
-    "Пастельний": "soft pastel colors, gentle gradients",
-    "Фото": "photorealistic, cinematic lighting",
-}
-
-DEFAULT_STYLE = "Мінімалізм"
-
 _client = genai.Client(api_key=GEMINI_API_KEY)
 
+
 # =========================================
-# ANALYZE REFERENCE
+# ANALYZE REFERENCE (СТИЛЬ)
 # =========================================
 
 async def analyze_reference(image_bytes: bytes) -> str | None:
@@ -40,7 +31,7 @@ async def analyze_reference(image_bytes: bytes) -> str | None:
                 {
                     "parts": [
                         {"inline_data": {"mime_type": "image/jpeg", "data": image_b64}},
-                        {"text": "Describe visual style for Instagram Story background. Colors, light, mood."},
+                        {"text": "Describe visual style: colors, lighting, mood."},
                     ]
                 }
             ],
@@ -57,32 +48,37 @@ async def analyze_reference(image_bytes: bytes) -> str | None:
 
 
 # =========================================
+# BUILD SCENE (КЛЮЧОВА ЛОГІКА)
+# =========================================
+
+def build_scene_prompt(what_to_show: str) -> str:
+    scene = what_to_show.strip()
+
+    if "ліворуч" in scene.lower() or "праворуч" in scene.lower():
+        return f"Before and after comparison: {scene}"
+
+    if "руки" in scene.lower():
+        return f"Close-up shot: {scene}, focus on texture and details"
+
+    return f"Realistic scene: {scene}"
+
+
+# =========================================
 # GENERATE BACKGROUND
 # =========================================
 
-async def generate_background(scene, style, reference_style_desc):
+async def generate_background(scene, reference_style_desc=None):
 
-    style_desc = reference_style_desc if reference_style_desc else STYLES.get(style, STYLES[DEFAULT_STYLE])
+    scene_prompt = build_scene_prompt(scene)
 
-   prompt = (
-    f"Instagram Story image, vertical 9:16.\n"
-
-    f"REALISTIC SCENE:\n{scene}\n\n"
-
-    "IMPORTANT:\n"
-    "- This is NOT abstract background\n"
-    "- Show real objects, real situation\n"
-    "- No gradients, no empty backgrounds\n"
-    "- No minimalism\n\n"
-
-    "COMPOSITION:\n"
-    "- Clear subject in frame\n"
-    "- Instagram style content\n"
-    "- Looks like real photo or video frame\n\n"
-
-    f"STYLE: {style_desc}\n"
-    "High detail, professional, realistic"
-)
+    prompt = (
+        f"Instagram Story, vertical 9:16.\n\n"
+        f"{scene_prompt}\n\n"
+        f"{reference_style_desc if reference_style_desc else ''}\n\n"
+        "No random people or faces.\n"
+        "If no person specified — show only product, hands or objects.\n"
+        "Looks like real Instagram story."
+    )
 
     try:
         response = _client.models.generate_content(
@@ -106,7 +102,7 @@ async def generate_background(scene, style, reference_style_desc):
 
 
 # =========================================
-# FALLBACK
+# FALLBACK (НЕ ЧОРНИЙ)
 # =========================================
 
 def generate_gradient():
@@ -125,7 +121,7 @@ def generate_gradient():
 
 
 # =========================================
-# TEXT
+# TEXT OVERLAY (SAFE ZONES)
 # =========================================
 
 def _get_font(size):
@@ -161,10 +157,23 @@ def overlay_text(img, text):
     font = _get_font(72)
     max_w = CANVAS_W - 120
 
-    text = text[:180]  # захист
+    text = text[:180]
 
     lines = wrap(text, font, max_w, draw)
 
+    # затемнення нижньої частини (щоб текст читався)
+    overlay = Image.new("RGBA", img.size, (0, 0, 0, 0))
+    ov_draw = ImageDraw.Draw(overlay)
+
+    ov_draw.rectangle(
+        [(0, int(CANVAS_H * 0.5)), (CANVAS_W, CANVAS_H)],
+        fill=(0, 0, 0, 120),
+    )
+
+    img = Image.alpha_composite(img, overlay)
+    draw = ImageDraw.Draw(img)
+
+    # текст у safe зоні
     y = int(CANVAS_H * 0.6)
 
     for line in lines:
@@ -180,23 +189,19 @@ def overlay_text(img, text):
 
 
 # =========================================
-# MAIN
+# MAIN (RETRY)
 # =========================================
 
 async def build_slide(
     slide_text,
     what_to_show,
-    has_interactive=False,
-    style=DEFAULT_STYLE,
     reference_style_desc=None,
 ):
     bg = None
 
-    # 🔥 RETRY
     for _ in range(3):
         bg = await generate_background(
             scene=what_to_show,
-            style=style,
             reference_style_desc=reference_style_desc,
         )
         if bg:
