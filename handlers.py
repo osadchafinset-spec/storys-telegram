@@ -43,26 +43,26 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # ГЕНЕРАЦІЯ КАРТИНКИ
     # =====================================
 
-    if text == "🎨 Генеруй":
+ if text == "🎨 Генеруй":
 
-      slide_text = result
-what_to_show = result
-        style = user_data.get("style")
+    slide_text = user_data.get("slide_text")
+    what_to_show = user_data.get("what_to_show")
+    style = user_data.get("style")
 
-        if not slide_text:
-            await update.message.reply_text("Немає тексту для генерації")
-            return
-
-        await update.message.reply_text("Генерую...")
-
-        image = await build_slide(
-            slide_text=slide_text,
-            what_to_show=what_to_show,
-            reference_style_desc=style
-        )
-
-        await update.message.reply_photo(image)
+    if not slide_text:
+        await update.message.reply_text("Немає тексту для генерації")
         return
+
+    await update.message.reply_text("Генерую...")
+
+    image = await build_slide(
+        slide_text=slide_text,
+        what_to_show=what_to_show,
+        reference_style_desc=style
+    )
+
+    await update.message.reply_photo(image)
+    return
 
     # =====================================
     # РЕДАГУВАННЯ
