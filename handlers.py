@@ -96,5 +96,9 @@ def parse_slides(text: str):
                 slide["visual"] = line.split("Що показати:")[-1].strip()
 
         slides.append(slide)
+        
 
     return slides
+
+async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Фото отримано (поки без обробки)")
