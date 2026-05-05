@@ -1,9 +1,17 @@
 from telegram import Update
 from telegram.ext import ContextTypes
 
-from imagen import build_slide, analyze_reference
-from keyboards import main_keyboard
+from prompts import build_theme_prompt
 from claude_api import generate_with_claude
+from imagen import build_slide
+from keyboards import main_keyboard
+
+
+# тимчасово захардкодимо (потім винесемо в кнопки)
+DEFAULT_LANG = "Українська"
+DEFAULT_GOAL = "Залучення"
+DEFAULT_TONE = "Провокативний"
+DEFAULT_COUNT = 5
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -30,49 +38,63 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # ГЕНЕРАЦІЯ КАРТИНКИ
     if text == "🎨 Генеруй":
 
-        slide_text = user_data.get("slide_text")
-        what_to_show = user_data.get("what_to_show")
-        style = user_data.get("style")
+        slide_data = user_data.get("slides")
 
-        if not slide_text:
-            await update.message.reply_text("Немає тексту для генерації")
+        if not slide_data:
+            await update.message.reply_text("Немає даних для генерації")
             return
 
         await update.message.reply_text("Генерую...")
 
+        # беремо перший слайд як тест
+        first_slide = slide_data[0]
+
         image = await build_slide(
-            slide_text=slide_text,
-            what_to_show=what_to_show,
-            reference_style_desc=style
+            slide_text=first_slide["text"],
+            what_to_show=first_slide["visual"],
+            reference_style_desc=None
         )
 
         await update.message.reply_photo(image)
         return
 
-    # НОВИЙ ЗАПИТ → CLAUDE
-    await update.message.reply_text("Генерую текст...")
+    # ГЕНЕРАЦІЯ СТОРІС
+    await update.message.reply_text("Генерую сторіс...")
 
-    result = await generate_with_claude(text)
-
-    user_data["slide_text"] = result
-    user_data["what_to_show"] = result
-    user_data["style"] = None
-
-    await update.message.reply_text(
-        f"{result}",
-        reply_markup=main_keyboard()
+    prompt = build_theme_prompt(
+        theme=text,
+        lang=DEFAULT_LANG,
+        goal=DEFAULT_GOAL,
+        tone=DEFAULT_TONE,
+        count=DEFAULT_COUNT
     )
 
+    result = await generate_with_claude(prompt)
 
-async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    photo = update.message.photo[-1]
-    file = await photo.get_file()
-    image_bytes = await file.download_as_bytearray()
+    # дуже простий парс (потім покращимо)
+    slides = parse_slides(result)
 
-    style = await analyze_reference(image_bytes)
-    context.user_data["style"] = style
+    user_data["slides"] = slides
 
-    await update.message.reply_text(
-        "Стиль збережено. Натисни 🎨 Генеруй",
-        reply_markup=main_keyboard()
-    )
+    await update.message.reply_text(result, reply_markup=main_keyboard())
+
+
+def parse_slides(text: str):
+    slides = []
+
+    blocks = text.split("Слайд")[1:]
+
+    for block in blocks:
+        slide = {}
+
+        lines = block.split("\n")
+
+        for line in lines:
+            if "Текст:" in line:
+                slide["text"] = line.split("Текст:")[-1].strip()
+            if "Що показати:" in line:
+                slide["visual"] = line.split("Що показати:")[-1].strip()
+
+        slides.append(slide)
+
+    return slides
